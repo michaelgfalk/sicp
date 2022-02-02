@@ -257,12 +257,12 @@
   (/ (log 1000) (log x)))
 (fp-verbose log_div 2)
 (display "Find solution to x^x = 1000 with average damping\n")
-(define (avg_damp f)
+(define (avg-damp f)
   (lambda (x)
     (/ (+ x (f x)) 2)))
-(fp-verbose (avg_damp log_div) 2)
+(fp-verbose (avg-damp log_div) 2)
 
-; It took 33 steps without avg_damp, and only 8 steps with it.
+; It took 33 steps without avg-damp, and only 8 steps with it.
 
 ; Exercise 1.37
 
@@ -384,11 +384,13 @@
 ; Now (double double) will apply the new proc another four times
 ; meaning that ultimately `inc` will be applied 16 times
 
-; A way to think about it is this...
-; ((double (double double)) proc) ≠ do proc (* 2 (* 2 2)) times
-; ((double (double double)) proc) actually means something like...
-; 'repeat the doubling of the doubling of the procedure', and resolves
-; to 'do the procedure (* (* 2 2) (* 2 2)) times' = 16 times
+; Or, more intuitively:
+; (double (double double)) effectively means, 'apply (double double) to iteself'
+; Now (double double) means 'apply the provided procedure four times to its input',
+; so if we apply (double double) to (double double), we apply (double double) four
+; times to its input. Each time, it quadruples the application of the input procedure,
+; meaning that (double (double double)) will cause its input to be applied 4 x 4 = 16 times
+; to its own operand.
 
 ; Exercise 1.42
 
@@ -433,3 +435,96 @@
 
 ; Exercise 1.45
 
+; How many average-damps are required to compute the nth root as a fixed-point search?
+
+; the nth root of x is the fixed point of y --> x/y^(n-1)
+
+; Borrow the fast-expt procedure from Chapter 1.2
+(define (fast-expt-iter b n)
+  (define (even? x)
+    (= (remainder x 2) 0))
+  (define (step a b n)
+    (cond ((= n 1) (* a b))
+          ((even? n) (step a (square b) (/ n 2)))
+          (else (step (* a b) b (dec n)))))
+  (step 1 b n))
+
+; Generate y --> x/y^(n-1)
+(define (fp-root-func b n)
+  (lambda (x)
+    (/ b (fast-expt-iter x (dec n)))))
+
+(newline)
+(display "Average damp experiments:\n")
+(display "5th root of 100: ")
+(fixed-point (avg-damp (avg-damp (fp-root-func 100 5)))
+             1.0)
+(display "6th root of 100: ")
+(fixed-point (avg-damp (avg-damp (fp-root-func 100 6)))
+             1.0)
+(display "7th root of 100: ")
+(fixed-point (avg-damp (avg-damp (fp-root-func 100 7)))
+             1.0)
+(display "8th root of 100 (required a third avg-damp): ")
+(fixed-point (avg-damp (avg-damp (avg-damp (fp-root-func 100 8))))
+             1.0)
+(display "15th root of 100: ")
+(fixed-point (avg-damp (avg-damp (avg-damp (fp-root-func 100 15))))
+             1.0)
+(display "16th root of 100 (required a fourth avg-damp): ")
+(fixed-point (avg-damp (avg-damp (avg-damp (avg-damp (fp-root-func 100 16)))))
+             1.0)
+; n = 2,3 - 1 average damp
+; n = 4,5,6,7 - 2 average damps
+; n = 8-15 - 3 average damps
+; n = 16... to 31 - 4 average damps
+
+; The number of average damps required goes up with the logarithm of 2...
+(define (nth-root x n)
+  (let ((f (fp-root-func x n))
+        (trans (repeated avg-damp (floor (log n 2)))))
+    (fixed-point (trans f) 1.0)))
+
+(newline)
+(display "The 123rd root of 5000: ")
+(nth-root 123 5000)
+(display "Average-damps required: ")
+(floor (log 123 2))
+
+; Exercise 1.46
+
+; Define a general iterative-improve procedure
+(define (iterative-improve good-enough? improve)
+  (lambda (first-guess)
+    (define (try guess)
+      (if (good-enough? guess)
+           guess
+           (try (improve guess))))
+    (try first-guess)))
+
+; Use it to define new sqrt and fixed-point procedures
+(define (average x y)
+  (/ (+ x y) 2))
+
+(define (sqrt x)
+  (let ((average (lambda (a b) (/ (+ a b) 2)))
+        (good-enough? (lambda (guess) (< (abs (- (square guess) x)) 0.001)))
+        (improve (lambda (guess) (average guess (/ x guess)))))
+    ((iterative-improve good-enough? improve) 1.0)))
+
+(newline)
+(display "Tests with iterative-improve:\n")
+(display "sqrt of 49: ")
+(sqrt 49)
+
+(define (fp-abstract f)
+  (let ((tolerance 0.00001)
+        (good-enough? (lambda (guess) (< (abs (- guess (f guess)))
+                                         tolerance)))
+        (improve (lambda (guess) (f guess))))
+    ((iterative-improve good-enough? improve) 1.0)))
+
+(display "12th root of 4578: ")
+(fp-abstract ((repeated avg-damp (floor (log 12 2)))
+              (fp-root-func 4578 12)))
+    
